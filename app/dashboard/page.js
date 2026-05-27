@@ -14,6 +14,15 @@ export default function Dashboard() {
   const router = useRouter();
   const canvasRef = useRef(null);
 
+  // ── 贪吃蛇 refs（解决 reset 后定时器不重启的问题）──
+  const snakeRef = useRef([]);
+  const dirRef = useRef({ x: 1, y: 0 });
+  const foodRef = useRef(null);
+  const scoreRef = useRef(0);
+  const gameOverRef = useRef(false);
+  const speedRef = useRef(120);
+  const intervalRef = useRef(null);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) setUser(data.user);
@@ -38,10 +47,7 @@ export default function Dashboard() {
   const fetchPhoto = async () => {
     const { data } = supabase.storage.from('photos').getPublicUrl('wall.jpg');
     if (data?.publicUrl) {
-      try {
-        const res = await fetch(data.publicUrl, { method: 'HEAD' });
-        if (res.ok) setPhotoUrl(data.publicUrl);
-      } catch {}
+      setPhotoUrl(data.publicUrl);
     }
   };
 
@@ -55,10 +61,10 @@ export default function Dashboard() {
     setUploading(false);
   };
 
-  // ── 留言板 ──
+  // ── 留言板（取最新 50 条）──
   const fetchMessages = async () => {
-    const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: true }).limit(50);
-    if (data) setMessages(data);
+    const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(50);
+    if (data) setMessages(data.reverse());
   };
 
   const sendMessage = async (e) => {
@@ -74,105 +80,148 @@ export default function Dashboard() {
     router.push('/');
   };
 
-  // ── 贪吃蛇 ──
-  useEffect(() => {
-    if (!canvasRef.current) return;
+  // ── 贪吃蛇（refs 版，修复 R 键重置）──
+  const resetSnake = useCallback(() => {
+    snakeRef.current = [{ x: 8, y: 8 }, { x: 7, y: 8 }, { x: 6, y: 8 }];
+    dirRef.current = { x: 1, y: 0 };
+    scoreRef.current = 0;
+    gameOverRef.current = false;
+    speedRef.current = 120;
+
+    // spawn food avoiding snake
+    const cols = 18, rows = 18;
+    let f;
+    do {
+      f = { x: Math.floor(Math.random() * cols), y: Math.floor(Math.random() * rows) };
+    } while (snakeRef.current.some(s => s.x === f.x && s.y === f.y));
+    foodRef.current = f;
+
+    // restart interval if stopped
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(tick, 120);
+    drawSnake();
+  }, []);
+
+  const tick = useCallback(() => {
+    if (gameOverRef.current) return;
+    const cols = 18, rows = 18;
+    const head = {
+      x: snakeRef.current[0].x + dirRef.current.x,
+      y: snakeRef.current[0].y + dirRef.current.y
+    };
+    if (
+      head.x < 0 || head.x >= cols ||
+      head.y < 0 || head.y >= rows ||
+      snakeRef.current.some(s => s.x === head.x && s.y === head.y)
+    ) {
+      gameOverRef.current = true;
+      drawSnake();
+      return;
+    }
+    snakeRef.current.unshift(head);
+    if (head.x === foodRef.current.x && head.y === foodRef.current.y) {
+      scoreRef.current += 10;
+      // spawn new food
+      let f;
+      do {
+        f = { x: Math.floor(Math.random() * cols), y: Math.floor(Math.random() * rows) };
+      } while (snakeRef.current.some(s => s.x === f.x && s.y === f.y));
+      foodRef.current = f;
+      if (speedRef.current > 60) {
+        speedRef.current -= 2;
+        clearInterval(intervalRef.current);
+        intervalRef.current = setInterval(tick, speedRef.current);
+      }
+    } else {
+      snakeRef.current.pop();
+    }
+    drawSnake();
+  }, []);
+
+  const drawSnake = useCallback(() => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const size = 16;
     const cols = 18, rows = 18;
     canvas.width = cols * size;
     canvas.height = rows * size;
 
-    let snake = [{ x: 8, y: 8 }, { x: 7, y: 8 }, { x: 6, y: 8 }];
-    let dir = { x: 1, y: 0 };
-    let food = spawnFood();
-    let score = 0;
-    let gameOver = false;
-    let speed = 120;
-
-    function spawnFood() {
-      let f;
-      do { f = { x: Math.floor(Math.random() * cols), y: Math.floor(Math.random() * rows) }; }
-      while (snake.some(s => s.x === f.x && s.y === f.y));
-      return f;
-    }
-
-    function draw() {
-      ctx.fillStyle = '#1a1a2e';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if ((r + c) % 2 === 0) {
-            ctx.fillStyle = '#16213e';
-            ctx.fillRect(c * size, r * size, size, size);
-          }
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if ((r + c) % 2 === 0) {
+          ctx.fillStyle = '#16213e';
+          ctx.fillRect(c * size, r * size, size, size);
         }
       }
+    }
+    if (foodRef.current) {
       ctx.fillStyle = '#e94560';
-      ctx.fillRect(food.x * size + 2, food.y * size + 2, size - 4, size - 4);
-      snake.forEach((s, i) => {
-        ctx.fillStyle = i === 0 ? '#0f3460' : '#162447';
-        ctx.fillRect(s.x * size + 1, s.y * size + 1, size - 2, size - 2);
-      });
+      ctx.fillRect(foodRef.current.x * size + 2, foodRef.current.y * size + 2, size - 4, size - 4);
+    }
+    snakeRef.current.forEach((s, i) => {
+      ctx.fillStyle = i === 0 ? '#0f3460' : '#162447';
+      ctx.fillRect(s.x * size + 1, s.y * size + 1, size - 2, size - 2);
+    });
+    ctx.fillStyle = '#fff';
+    ctx.font = '12px monospace';
+    ctx.fillText('Score: ' + scoreRef.current, 8, canvas.height - 6);
+    if (gameOverRef.current) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#e94560';
+      ctx.font = '18px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 8);
       ctx.fillStyle = '#fff';
-      ctx.font = '12px monospace';
-      ctx.fillText('Score: ' + score, 8, canvas.height - 6);
-      if (gameOver) {
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#e94560';
-        ctx.font = '18px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 8);
-        ctx.fillStyle = '#fff';
-        ctx.font = '11px monospace';
-        ctx.fillText('按 R 重新开始', canvas.width / 2, canvas.height / 2 + 14);
-        ctx.textAlign = 'start';
-      }
+      ctx.font = '11px monospace';
+      ctx.fillText('按 R 或点击按钮重新开始', canvas.width / 2, canvas.height / 2 + 14);
+      ctx.textAlign = 'start';
     }
+  }, []);
 
-    function tick() {
-      if (gameOver) return;
-      const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
-      if (head.x < 0 || head.x >= cols || head.y < 0 || head.y >= rows || snake.some(s => s.x === head.x && s.y === head.y)) {
-        gameOver = true; draw(); return;
-      }
-      snake.unshift(head);
-      if (head.x === food.x && head.y === food.y) {
-        score += 10;
-        food = spawnFood();
-        if (speed > 60) speed -= 2;
-      } else {
-        snake.pop();
-      }
-      draw();
+  const keyHandler = useCallback((e) => {
+    if (e.key === 'r' || e.key === 'R') {
+      resetSnake();
+      return;
     }
-
-    const keyHandler = (e) => {
-      if (e.key === 'r' || e.key === 'R') {
-        snake = [{ x: 8, y: 8 }, { x: 7, y: 8 }, { x: 6, y: 8 }];
-        dir = { x: 1, y: 0 };
-        score = 0;
-        gameOver = false;
-        speed = 120;
-        food = spawnFood();
-        return;
-      }
-      const keyMap = { ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 }, ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 } };
-      const newDir = keyMap[e.key];
-      if (newDir && !(newDir.x === -dir.x && newDir.y === -dir.y)) dir = newDir;
+    const keyMap = {
+      ArrowUp: { x: 0, y: -1 },
+      ArrowDown: { x: 0, y: 1 },
+      ArrowLeft: { x: -1, y: 0 },
+      ArrowRight: { x: 1, y: 0 }
     };
+    const newDir = keyMap[e.key];
+    if (newDir && !(newDir.x === -dirRef.current.x && newDir.y === -dirRef.current.y)) {
+      dirRef.current = newDir;
+    }
+  }, [resetSnake]);
 
-    draw();
+  useEffect(() => {
+    // 初始化
+    snakeRef.current = [{ x: 8, y: 8 }, { x: 7, y: 8 }, { x: 6, y: 8 }];
+    dirRef.current = { x: 1, y: 0 };
+    scoreRef.current = 0;
+    gameOverRef.current = false;
+    speedRef.current = 120;
+    const cols = 18, rows = 18;
+    let f;
+    do {
+      f = { x: Math.floor(Math.random() * cols), y: Math.floor(Math.random() * rows) };
+    } while (snakeRef.current.some(s => s.x === f.x && s.y === f.y));
+    foodRef.current = f;
+
+    drawSnake();
     window.addEventListener('keydown', keyHandler);
-    const interval = setInterval(() => { tick(); if (gameOver) clearInterval(interval); }, speed);
+    intervalRef.current = setInterval(tick, 120);
 
     return () => {
       window.removeEventListener('keydown', keyHandler);
-      clearInterval(interval);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [canvasRef.current]);
+  }, []);
 
   if (!user) return null;
 
@@ -196,10 +245,10 @@ export default function Dashboard() {
           <h2 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">📷 照片墙</h2>
           <div className="flex-1 bg-gray-900 rounded-lg flex items-center justify-center overflow-hidden min-h-[280px]">
             {photoUrl ? (
-              <img src={photoUrl} alt="照片墙" className="max-w-full max-h-full object-contain" />
-            ) : (
-              <span className="text-gray-600 text-sm">还没有照片</span>
-            )}
+              <img src={photoUrl} alt="照片墙" className="max-w-full max-h-full object-contain"
+                onError={(e) => { e.target.style.display = 'none'; setPhotoUrl(null); }} />
+            ) : null}
+            {!photoUrl && <span className="text-gray-600 text-sm">还没有照片</span>}
           </div>
           <label className="mt-3 cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white text-sm py-2 px-4 rounded-lg text-center transition inline-block w-full">
             {uploading ? '上传中...' : '上传照片'}
@@ -211,7 +260,13 @@ export default function Dashboard() {
         <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex flex-col items-center">
           <h2 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider self-start">🐍 贪吃蛇</h2>
           <canvas ref={canvasRef} className="rounded-lg border border-gray-700" />
-          <p className="text-gray-500 text-xs mt-2">方向键控制 · 按 R 重新开始</p>
+          <div className="flex items-center gap-3 mt-2">
+            <p className="text-gray-500 text-xs">方向键控制 · 按 R 重新开始</p>
+            <button onClick={resetSnake}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1 rounded transition">
+              重新开始
+            </button>
+          </div>
         </div>
       </div>
 
