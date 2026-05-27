@@ -16,25 +16,11 @@ export default function Register() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
-    // 先尝试创建用户（SMTP关了不会发邮件）
-    const { error: signUpErr } = await supabase.auth.signUp({
-      email,
-      password: crypto.randomUUID() + crypto.randomUUID(),
-    });
-
-    // 忽略"已存在"错误
-    if (signUpErr && !signUpErr.message?.includes('already') && !signUpErr.message?.includes('exists')) {
-      // 用户不存在，创建失败但不是因为已存在 → 可能有问题
-    }
-
-    // 发验证码
-    const { error: otpErr } = await supabase.auth.signInWithOtp({
+    const { error: err } = await supabase.auth.signInWithOtp({
       email,
       options: { shouldCreateUser: true },
     });
-
-    if (otpErr) setError(otpErr.message);
+    if (err) setError(err.message);
     else setCodeSent(true);
     setLoading(false);
   };
@@ -52,12 +38,12 @@ export default function Register() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-6 text-center">注册/登录</h1>
+        <h1 className="text-2xl font-bold mb-6 text-center">注册</h1>
         {error && <p className="text-red-500 text-sm mb-4 bg-red-50 p-3 rounded">{error}</p>}
         
         {!codeSent ? (
           <form onSubmit={sendCode} className="space-y-4">
-            <p className="text-sm text-gray-500">新用户自动注册，老用户直接登录</p>
+            <p className="text-sm text-gray-500">输入邮箱获取验证码</p>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)}
               className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" required placeholder="your@qq.com" />
             <button type="submit" disabled={loading}
