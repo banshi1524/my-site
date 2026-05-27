@@ -16,11 +16,17 @@ export default function Register() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const { error: err } = await supabase.auth.signUp({ email, password });
+    const { data, error: err } = await supabase.auth.signUp({ email, password });
     if (err) {
       setError(err.message);
+      setLoading(false);
+      return;
+    }
+    // 邮件验证已关，注册即登录
+    if (data.session) {
+      router.push('/dashboard');
     } else {
-      // 邮件验证已关，直接登录
+      // 兜底：手动登录
       const { error: err2 } = await supabase.auth.signInWithPassword({ email, password });
       if (err2) setError(err2.message);
       else router.push('/dashboard');
