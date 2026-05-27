@@ -16,20 +16,27 @@ export default function Register() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const { data, error: err } = await supabase.auth.signUp({ email, password });
-    if (err) {
-      setError(err.message);
+
+    // 通过服务端 API 创建用户（不发邮件）
+    const res = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error || '注册失败');
       setLoading(false);
       return;
     }
-    // 邮件验证已关，注册即登录
-    if (data.session) {
-      router.push('/dashboard');
+
+    // 用户创建成功，直接登录
+    const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password });
+    if (loginErr) {
+      setError('注册成功，但自动登录失败，请手动登录');
     } else {
-      // 兜底：手动登录
-      const { error: err2 } = await supabase.auth.signInWithPassword({ email, password });
-      if (err2) setError(err2.message);
-      else router.push('/dashboard');
+      router.push('/dashboard');
     }
     setLoading(false);
   };
