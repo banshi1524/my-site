@@ -17,24 +17,36 @@ export default function Register() {
     setError('');
     setLoading(true);
 
-    // 通过服务端 API 创建用户（不发邮件）
-    const res = await fetch('/api/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+    const { data, error: err } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: undefined }
     });
 
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || '注册失败');
+    if (err) {
+      if (err.message.includes('rate limit') || err.message.includes('rate_limit')) {
+        setError('邮件发送太频繁，请1小时后再试');
+      } else if (err.message.includes('already') || err.message.includes('exists')) {
+        setError('该邮箱已注册，请直接登录');
+        setLoading(false);
+        return;
+      } else {
+        setError(err.message);
+      }
       setLoading(false);
       return;
     }
 
-    // 用户创建成功，直接登录
-    const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password });
-    if (loginErr) {
-      setError('注册成功，但自动登录失败，请手动登录');
+    // 如果返回了session，说明邮件确认已关，直接登录
+    if (data.session) {
+      router.push('/dashboard');
+      return;
+    }
+
+    // 兜底：手动登录
+    const { error: err2 } = await supabase.auth.signInWithPassword({ email, password });
+    if (err2) {
+      setError('注册成功！请手动登录。');
     } else {
       router.push('/dashboard');
     }
