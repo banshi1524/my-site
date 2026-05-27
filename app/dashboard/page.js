@@ -85,6 +85,9 @@ export default function Dashboard() {
       </nav>
 
       <div className="max-w-3xl mx-auto p-6">
+        <div className="bg-white rounded-xl shadow-sm mb-8 overflow-hidden">
+          <img src="/screenshot.png" alt="截图" className="w-full" />
+        </div>
         <div className="bg-white p-6 rounded-xl shadow-sm mb-8">
           <h2 className="text-lg font-semibold mb-4">{editing ? '编辑内容' : '发布新内容'}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
