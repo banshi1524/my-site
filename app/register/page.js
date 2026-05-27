@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 export default function Register() {
@@ -17,8 +16,25 @@ export default function Register() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const { error: err } = await supabase.auth.signInWithOtp({ email });
-    if (err) setError(err.message);
+
+    // 先尝试创建用户（SMTP关了不会发邮件）
+    const { error: signUpErr } = await supabase.auth.signUp({
+      email,
+      password: crypto.randomUUID() + crypto.randomUUID(),
+    });
+
+    // 忽略"已存在"错误
+    if (signUpErr && !signUpErr.message?.includes('already') && !signUpErr.message?.includes('exists')) {
+      // 用户不存在，创建失败但不是因为已存在 → 可能有问题
+    }
+
+    // 发验证码
+    const { error: otpErr } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true },
+    });
+
+    if (otpErr) setError(otpErr.message);
     else setCodeSent(true);
     setLoading(false);
   };

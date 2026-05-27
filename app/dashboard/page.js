@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
+  const [time, setTime] = useState('');
   const [items, setItems] = useState([]);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -19,7 +20,19 @@ export default function Dashboard() {
       else router.push('/login');
     });
     fetchItems();
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
   }, []);
+
+  const updateTime = () => {
+    const now = new Date();
+    setTime(now.toLocaleString('zh-CN', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      weekday: 'long'
+    }));
+  };
 
   const fetchItems = async () => {
     const { data } = await supabase.from('items').select('*').order('created_at', { ascending: false });
@@ -63,7 +76,8 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm px-6 py-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold">管理后台</h1>
+        <h1 className="text-xl font-bold">张凡</h1>
+        <div className="text-center text-gray-500 text-sm font-mono">{time}</div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-500">{user.email}</span>
           <button onClick={handleLogout} className="text-sm text-red-500 hover:underline">退出</button>
